@@ -30,7 +30,7 @@ import shutil
 
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
 
 from .file_utils import cached_path
 
@@ -875,22 +875,27 @@ class BertForSequenceClassification(PreTrainedBertModel):
     logits = model(input_ids, token_type_ids, input_mask)
     ```
     """
-    def __init__(self, config, num_labels=2):
+    def __init__(self, config, num_labels=2, multi_label=False):
         super(BertForSequenceClassification, self).__init__(config)
         self.num_labels = num_labels
+        self.multi_label = multi_label
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, class_weight=None):
         _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
 
         if labels is not None:
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            if self.multi_label:
+                loss_fct = BCEWithLogitsLoss(pos_weight=class_weight)
+                loss = loss_fct(logits.view(-1, self.num_labels), labels)
+            else:
+                loss_fct = CrossEntropyLoss(weight=class_weight)
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
             return loss
         else:
             return logits

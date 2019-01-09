@@ -194,7 +194,109 @@ class ColaProcessor(DataProcessor):
         return examples
 
 
-def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer):
+class NLPCC2014Processor(DataProcessor):  # multi-class single-label
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
+
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
+    def get_labels(self):
+        """See base class."""
+        return ["none", "anger", "disgust", "fear", "happiness", "like", "sadness", "surprise"]
+
+    def _create_examples(self, lines, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        # All sets have headers: skip the first line, start numbering texts from 0
+        for (i, line) in enumerate(lines[1:]):
+            guid = "%s-%s" % (set_type, i)
+            text = line[1]
+            label = line[2]
+            examples.append(
+                InputExample(guid=guid, text_a=text, text_b=None, label=label))
+        return examples
+
+
+class NLPCC2018Processor(DataProcessor):  # multi-label
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
+
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
+    def get_labels(self):
+        """See base class."""
+        return ["happiness", "sadness", "anger", "fear", "surprise"]
+
+    def _create_examples(self, lines, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        # All sets have headers: skip the first line, start numbering texts from 0
+        for (i, line) in enumerate(lines[1:]):
+            guid = "%s-%s" % (set_type, i)
+            text = line[1]
+            labels_multi = line[2].split()
+            examples.append(
+                InputExample(guid=guid, text_a=text, text_b=None, label=labels_multi))
+        return examples
+
+
+class SemEval2018Processor(DataProcessor):  # multi-label
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "ec_train.tsv")), "train")
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "ec_dev.tsv")), "dev")
+
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "ec_gold.tsv")), "test")
+
+    def get_labels(self):
+        """See base class."""
+        return ['anger', 'anticipation', 'disgust', 'fear', 'joy', 'love',
+                'optimism', 'pessimism', 'sadness', 'surprise', 'trust']
+
+    def _create_examples(self, lines, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        # All sets have headers: skip the first line, start numbering texts from 0
+        for (i, line) in enumerate(lines[1:]):
+            guid = "%s-%s" % (set_type, i)
+            text = line[1]
+            labels_multi = [self.get_labels()[label_id]
+                            for label_id in range(11)
+                            if line[label_id+2] == '1']
+            examples.append(
+                InputExample(guid=guid, text_a=text, text_b=None, label=labels_multi))
+        return examples
+
+
+def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer, multi_label=False):
     """Loads a data file into a list of `InputBatch`s."""
 
     label_map = {label : i for i, label in enumerate(label_list)}
@@ -256,23 +358,45 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
 
-        label_id = label_map[example.label]
-        if ex_index < 5:
-            logger.info("*** Example ***")
-            logger.info("guid: %s" % (example.guid))
-            logger.info("tokens: %s" % " ".join(
+        if multi_label:  # Create one-hot-encoded labels vector
+            label_ids_multi = np.zeros_like(label_list, dtype=np.int8)
+            if example.label is not None:
+                label_ids = [label_map[label] for label in example.label]
+                label_ids_multi[label_ids] = 1
+            if ex_index < 5:
+                logger.info("*** Example ***")
+                logger.info("guid: %s" % (example.guid))
+                logger.info("tokens: %s" % " ".join(
                     [str(x) for x in tokens]))
-            logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-            logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
-            logger.info(
+                logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
+                logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
+                logger.info(
                     "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-            logger.info("label: %s (id = %d)" % (example.label, label_id))
+                logger.info("labels: {} (ids = {})".format(example.label, label_ids_multi))
 
-        features.append(
+            features.append(
                 InputFeatures(input_ids=input_ids,
                               input_mask=input_mask,
                               segment_ids=segment_ids,
-                              label_id=label_id))
+                              label_id=label_ids_multi))
+        else:
+            label_id = label_map[example.label]
+            if ex_index < 5:
+                logger.info("*** Example ***")
+                logger.info("guid: %s" % (example.guid))
+                logger.info("tokens: %s" % " ".join(
+                        [str(x) for x in tokens]))
+                logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
+                logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
+                logger.info(
+                        "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
+                logger.info("label: %s (id = %d)" % (example.label, label_id))
+
+            features.append(
+                    InputFeatures(input_ids=input_ids,
+                                  input_mask=input_mask,
+                                  segment_ids=segment_ids,
+                                  label_id=label_id))
     return features
 
 
@@ -392,12 +516,18 @@ def main():
         "cola": ColaProcessor,
         "mnli": MnliProcessor,
         "mrpc": MrpcProcessor,
+        "nlpcc2014": NLPCC2014Processor,
+        "nlpcc2018": NLPCC2018Processor,
+        "semeval2018": SemEval2018Processor
     }
 
-    num_labels_task = {
-        "cola": 2,
-        "mnli": 3,
-        "mrpc": 2,
+    multi_label_tasks = {
+        "cola": False,
+        "mnli": False,
+        "mrpc": False,
+        "nlpcc2014": False,
+        "nlpcc2018": True,
+        "semeval2018": True
     }
 
     if args.local_rank == -1 or args.no_cuda:
@@ -437,7 +567,8 @@ def main():
         raise ValueError("Task not found: %s" % (task_name))
 
     processor = processors[task_name]()
-    num_labels = num_labels_task[task_name]
+    num_labels = len(processor.get_labels())
+    multi_label = multi_label_tasks[task_name]
     label_list = processor.get_labels()
 
     tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
@@ -498,12 +629,23 @@ def main():
                              warmup=args.warmup_proportion,
                              t_total=t_total)
 
+    # Get class weights
+    if multi_label:
+        train_features = convert_examples_to_features(
+            train_examples, label_list, args.max_seq_length, tokenizer, multi_label)
+        train_labels = np.stack([f.label_id for f in train_features], axis=0)
+        pos_examples_per_class = np.sum(train_labels, axis=0)
+        class_weight = (len(train_examples) - pos_examples_per_class) / pos_examples_per_class
+
+    else:
+        class_weight = None
+
     global_step = 0
     nb_tr_steps = 0
     tr_loss = 0
     if args.do_train:
         train_features = convert_examples_to_features(
-            train_examples, label_list, args.max_seq_length, tokenizer)
+            train_examples, label_list, args.max_seq_length, tokenizer, multi_label)
         logger.info("***** Running training *****")
         logger.info("  Num examples = %d", len(train_examples))
         logger.info("  Batch size = %d", args.train_batch_size)
@@ -511,8 +653,9 @@ def main():
         all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
         all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
         all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
-        all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.long)
-        train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+        all_label_ids = torch.tensor([f.label_id for f in train_features],
+                                     dtype=torch.float if multi_label else torch.long)
+        train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids, class_weight)
         if args.local_rank == -1:
             train_sampler = RandomSampler(train_data)
         else:
@@ -563,14 +706,15 @@ def main():
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         eval_examples = processor.get_dev_examples(args.data_dir)
         eval_features = convert_examples_to_features(
-            eval_examples, label_list, args.max_seq_length, tokenizer)
+            eval_examples, label_list, args.max_seq_length, tokenizer, multi_label)
         logger.info("***** Running evaluation *****")
         logger.info("  Num examples = %d", len(eval_examples))
         logger.info("  Batch size = %d", args.eval_batch_size)
         all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
         all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
         all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
-        all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
+        all_label_ids = torch.tensor([f.label_id for f in eval_features],
+                                     dtype=torch.float if multi_label else torch.long)
         eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
         # Run prediction for full data
         eval_sampler = SequentialSampler(eval_data)
