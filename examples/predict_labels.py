@@ -46,7 +46,7 @@ logger.info("device: {} n_gpu: {}, distributed training: {}, 16-bits training: {
 
 # Load a trained model that you have fine-tuned
 output_model_file = os.path.join(OUTPUT_DIR, "pytorch_model.bin")
-model_state_dict = torch.load(output_model_file, map_location='cpu')
+model_state_dict = torch.load(output_model_file, map_location='cpu')  # Modify if running on GPU
 model = BertForSequenceClassification.from_pretrained(BERT_MODEL, state_dict=model_state_dict, num_labels=len(label_list), multi_label=True)
 model.to(device)
 
@@ -98,17 +98,21 @@ def eval_and_predict(examples: List[InputExample], multi_label, batch_size=8, ev
     for key in sorted(result.keys()):
         logger.info("  %s = %s", key, str(result[key]))
 
-    # # Write probabilities to file
-    # print("Writing probabilities to {}:".format(output_probs_file))
+    # Combine logits and convert to probabilities
     all_logits = np.concatenate(all_logits, axis=0)
     if multi_label:
         all_probs = nn.Sigmoid()(torch.tensor(all_logits))
     else:
+        # In single-label case probabilities must sum to 1, therefore softmax is used
         all_probs = nn.Softmax()(torch.tensor(all_logits))
-    all_probs_as_df = pd.DataFrame(data=all_probs.numpy(), columns=label_list)
+    all_probs = all_probs.numpy()
+
+    # # Write probabilities to file
+    # print("Writing probabilities to {}:".format(output_probs_file))
+    # all_probs_as_df = pd.DataFrame(data=all_probs, columns=label_list)
     # all_probs_as_df.to_csv(output_probs_file, sep='\t')
 
-    return all_probs_as_df
+    return all_probs
 
 
 def pred_from_thresholds(prob, thresholds):
@@ -130,7 +134,8 @@ emotion_map = {i: label for i, label in enumerate(label_list)}
 
 demo_examples = [InputExample(i, sent) for i, sent in enumerate(demo_sentences)]
 demo_prob = eval_and_predict(demo_examples, True)
-demo_pred = pred_from_thresholds(demo_prob.values, [0.5]*len(label_list))
+# Assuming that class imbalance was compensated for in training stage, 0.5 is an acceptable global threshold
+demo_pred = pred_from_thresholds(demo_prob, [0.5]*len(label_list))
 demo_pred_labels = [[emotion_map[i] for i in np.nonzero(p)[0]] for p in demo_pred]
 print("Predicted emotions:")
 for i, sent in enumerate(demo_sentences):
