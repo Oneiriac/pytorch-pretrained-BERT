@@ -8,7 +8,10 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader, SequentialSampler
 import numpy as np
 from torch import nn
+from skorch import NeuralNetClassifier
 import pandas as pd
+
+from pytorch_pretrained_bert.modeling import BertForSkorch
 
 DATA_DIR = "../data/nlpcc2018"
 EVAL_BATCH_SIZE = 8
@@ -115,6 +118,37 @@ def eval_and_predict(examples: List[InputExample], multi_label, batch_size=8, ev
     return all_probs
 
 
+def eval_and_predict_skorch(examples: List[InputExample], multi_label, batch_size=8, eval=True):
+    features = convert_examples_to_features(examples, label_list, MAX_SEQ_LENGTH, tokenizer,
+                                                 multi_label=multi_label)
+    logger.info("***** Running evaluation *****")
+    logger.info("  Num examples = %d", len(examples))
+    logger.info("  Batch size = %d", batch_size)
+    all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+    all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
+    all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
+    all_label_ids = torch.tensor([f.label_id for f in features],
+                                 dtype=torch.float if multi_label else torch.long)
+    eval_data = {
+        "input_ids": all_input_ids,
+        "attention_mask": all_input_mask,
+        "token_type_ids": all_segment_ids,
+        "labels": all_label_ids,
+    }
+
+    # Run prediction for full data
+    skorch_model = NeuralNetClassifier(model)
+    skorch_model = skorch_model.initialize()
+    all_probs = skorch_model.predict_proba(eval_data)
+
+    # # Write probabilities to file
+    # print("Writing probabilities to {}:".format(output_probs_file))
+    # all_probs_as_df = pd.DataFrame(data=all_probs, columns=label_list)
+    # all_probs_as_df.to_csv(output_probs_file, sep='\t')
+
+    return all_probs
+
+
 def pred_from_thresholds(prob, thresholds):
     thresholds_mask = np.tile(thresholds, reps=(prob.shape[0], 1))
     return np.greater(prob, thresholds_mask).astype(int)
@@ -133,7 +167,7 @@ demo_sentences = [
 emotion_map = {i: label for i, label in enumerate(label_list)}
 
 demo_examples = [InputExample(i, sent) for i, sent in enumerate(demo_sentences)]
-demo_prob = eval_and_predict(demo_examples, True)
+demo_prob = eval_and_predict_skorch(demo_examples, True)
 # Assuming that class imbalance was compensated for in training stage, 0.5 is an acceptable global threshold
 demo_pred = pred_from_thresholds(demo_prob, [0.5]*len(label_list))
 demo_pred_labels = [[emotion_map[i] for i in np.nonzero(p)[0]] for p in demo_pred]
@@ -141,4 +175,3 @@ print("Predicted emotions:")
 for i, sent in enumerate(demo_sentences):
     print(f"{sent}\temotions: {demo_pred_labels[i]}")
 
-pass

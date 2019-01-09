@@ -901,6 +901,24 @@ class BertForSequenceClassification(PreTrainedBertModel):
             return logits
 
 
+class BertForSkorch(PreTrainedBertModel):
+    def __init__(self, config, num_labels=2, multi_label=False):
+        super(BertForSkorch, self).__init__(config)
+        self.num_labels = num_labels
+        self.multi_label = multi_label
+        self.bert = BertModel(config)
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.classifier = nn.Linear(config.hidden_size, num_labels)
+        self.apply(self.init_bert_weights)
+
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None, class_weight=None):
+        _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+
+        return logits
+
+
 class BertForMultipleChoice(PreTrainedBertModel):
     """BERT model for multiple choice tasks.
     This module is composed of the BERT model with a linear layer on top of
