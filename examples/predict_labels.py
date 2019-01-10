@@ -11,8 +11,6 @@ from torch import nn
 from skorch import NeuralNetClassifier
 import pandas as pd
 
-from pytorch_pretrained_bert.modeling import BertForSkorch
-
 DATA_DIR = "../data/nlpcc2018"
 EVAL_BATCH_SIZE = 8
 PREDICT_BATCH_SIZE = 8
@@ -132,8 +130,7 @@ def eval_and_predict_skorch(examples: List[InputExample], multi_label, batch_siz
     eval_data = {
         "input_ids": all_input_ids,
         "attention_mask": all_input_mask,
-        "token_type_ids": all_segment_ids,
-        "labels": all_label_ids,
+        "token_type_ids": all_segment_ids
     }
 
     # Run prediction for full data
